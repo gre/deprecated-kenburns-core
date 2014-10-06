@@ -11,8 +11,8 @@ var rectMix = require("rect-mix");
 
 function KenBurns () {
   this.animationDefer = null;
-  this.clamped = true;
-  this.rgb = [ 0, 0, 0 ]; // in percentage convention
+  this.setClamped(true);
+  this.setRGB([0,0,0]); // in percentage convention
 }
 
 KenBurns.prototype = {
@@ -21,7 +21,7 @@ KenBurns.prototype = {
   runEnd: noop,
   destroy: noop,
 
-  getBound: function (cropBound, image) {
+  _getBound: function (cropBound, image) {
     var bnds = typeof cropBound === "function" ? cropBound(this.getViewport(), image) : cropBound;
     if (this.clamped) bnds = rectClamp(bnds, [ 0, 0, image.width, image.height ]);
     return bnds;
@@ -41,28 +41,20 @@ KenBurns.prototype = {
    * Draw the image one time.
    */
   one: function (image, crop) {
-    var boundCrop = this.getBound(crop, image);
+    var boundCrop = this._getBound(crop, image);
     this.runStart(image, boundCrop, boundCrop, 0);
     this.draw(image, boundCrop);
     this.runEnd();
     return image;
   },
 
-  /**
-   * The Ken Burns Effect will animate image from fromCropBound to toCropBound with a given duration and easing function.
-   *
-   * image MUST be loaded.
-   */
-  run: function (image, startCrop, endCrop, duration, easing) {
+  _runValidation: function (image, startCrop, endCrop, duration, easing) {
     if (!image) invalidArgument(image, "image is required.");
     if (!duration || isNaN(duration)) invalidArgument(duration, "duration is required and must be a number.");
     if (!easing) easing = identity;
     if (typeof easing !== "function") invalidArgument(easing, "easing must be a function.");
-    var self = this;
-    var start = now();
-    var d = Q.defer();
-    var fromCropBound = this.getBound(startCrop, image);
-    var toCropBound = this.getBound(endCrop, image);
+    var fromCropBound = this._getBound(startCrop, image);
+    var toCropBound = this._getBound(endCrop, image);
 
     var startEndCropReason = "startCrop and endCrop are required and must be a bound array or a function returning a bound array.";
 
@@ -71,7 +63,26 @@ KenBurns.prototype = {
     if (!(toCropBound instanceof Array) || toCropBound.length !== 4)
       invalidArgument(endCrop, startEndCropReason);
 
-    self.runStart.apply(self, arguments);
+    return [image,fromCropBound,toCropBound,duration,easing];
+  },
+
+  /**
+   * The Ken Burns Effect will animate image from fromCropBound to toCropBound with a given duration and easing function.
+   *
+   * image MUST be loaded.
+   */
+  run: function () {
+    var self = this;
+    var args = self._runValidation.apply(self, arguments);
+    var image = args[0];
+    var fromCropBound = args[1];
+    var toCropBound = args[2];
+    var duration = args[3];
+    var easing = args[4];
+
+    var d = Q.defer();
+    var start = now();
+    self.runStart.apply(self, args);
     d.promise.then(self.runEnd.bind(self)).done();
     self.animationDefer = d;
     (function render () {
